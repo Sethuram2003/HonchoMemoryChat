@@ -1,0 +1,112 @@
+services:
+  # ---- Honcho (memory backend) ----
+  honcho-api:
+    build:
+      context: ./honcho
+      dockerfile: Dockerfile
+    entrypoint: ["sh", "docker/entrypoint.sh"]
+    depends_on:
+      honcho-db:
+        condition: service_healthy
+      honcho-redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8666:8000"
+    environment:
+      - DB_CONNECTION_URI=postgresql+psycopg://postgres:postgres@honcho-db:5432/postgres
+      - CACHE_URL=redis://honcho-redis:6379/0?suppress=true
+      - CACHE_ENABLED=true
+    env_file:
+      - ./config/honcho.env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2).read()"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  honcho-deriver:
+    build:
+      context: ./honcho
+      dockerfile: Dockerfile
+    entrypoint: ["/app/.venv/bin/python", "-m", "src.deriver"]
+    depends_on:
+      honcho-api:
+        condition: service_healthy
+      honcho-db:
+        condition: service_healthy
+      honcho-redis:
+        condition: service_healthy
+    environment:
+      - DB_CONNECTION_URI=postgresql+psycopg://postgres:postgres@honcho-db:5432/postgres
+      - CACHE_URL=redis://honcho-redis:6379/0?suppress=true
+      - CACHE_ENABLED=true
+    env_file:
+      - ./config/honcho.env
+    restart: unless-stopped
+
+  honcho-db:
+    image: pgvector/pgvector:pg15
+    restart: unless-stopped
+    command: ["postgres", "-c", "max_connections=200"]
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    volumes:
+      - ./honcho/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - honcho-pgdata:/var/lib/postgresql/data/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  honcho-redis:
+    image: redis:8.2
+    restart: unless-stopped
+    volumes:
+      - honcho-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ---- FastAPI backend ----
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8001:8000"
+    environment:
+      - HONCHO_URL=http://honcho-api:8000
+      - HONCHO_WORKSPACE=honcho-memory-chat
+      - OLLAMA_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=ornith:9b
+      - DB_PATH=/data/users.db
+    depends_on:
+      honcho-api:
+        condition: service_healthy
+    volumes:
+      - backend-data:/data
+    restart: unless-stopped
+
+  # ---- React frontend ----
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  honcho-pgdata:
+  honcho-redis-data:
+  backend-data:

@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+node_modules/
+dist/
+.venv/
+*.db
+honcho-pgdata/
+honcho-redis-data/
+backend-data/
