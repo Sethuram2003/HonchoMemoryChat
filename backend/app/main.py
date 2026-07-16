@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.db.users import init_db
-from app.services.honcho import HonchoService
+from app.services.honcho_service import HonchoService
 from app.routes import auth_router, sessions_router, chat_router
 
 
