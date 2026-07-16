@@ -1,0 +1,70 @@
+import uuid
+from honcho import Honcho
+from langchain_ollama import ChatOllama
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+from ..core.config import HONCHO_URL, WORKSPACE_ID, OLLAMA_URL, OLLAMA_MODEL
+
+
+def email_to_peer_id(email):
+    return f"user-{email.replace('@', '-at-').replace('.', '-')}"
+
+
+class HonchoService:
+    def __init__(self):
+        self.honcho = Honcho(base_url=HONCHO_URL, workspace_id=WORKSPACE_ID)
+        self.llm = ChatOllama(model=OLLAMA_MODEL, base_url=OLLAMA_URL, temperature=0.7)
+        self.assistant = self.honcho.peer("assistant")
+
+    def create_peer(self, email):
+        return self.honcho.peer(email_to_peer_id(email))
+
+    def create_session(self, email, session_id=None):
+        if session_id is None:
+            session_id = f"session-{uuid.uuid4().hex[:8]}"
+        user_peer = self.create_peer(email)
+        self.honcho.session(session_id, peers=[user_peer, self.assistant])
+        return session_id
+
+    def list_sessions(self, email):
+        user_peer = self.create_peer(email)
+        return [s.id for s in user_peer.sessions().items]
+
+    def get_messages(self, email, session_id):
+        user_peer = self.create_peer(email)
+        session = self.honcho.session(session_id, peers=[user_peer, self.assistant])
+        result = []
+        for msg in session.messages().items:
+            result.append({
+                "role": "assistant" if msg.peer_id == "assistant" else "user",
+                "content": msg.content,
+            })
+        return result
+
+    def chat(self, email, session_id, message):
+        user_peer = self.create_peer(email)
+        session = self.honcho.session(session_id, peers=[user_peer, self.assistant])
+
+        session.add_messages([user_peer.message(message)])
+
+        context = session.context()
+        honcho_messages = context.to_openai(assistant=self.assistant)
+        if not honcho_messages:
+            honcho_messages = [{"role": "user", "content": message}]
+
+        lc_messages = []
+        for m in honcho_messages:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if role == "system":
+                lc_messages.append(SystemMessage(content=content))
+            elif role == "assistant":
+                lc_messages.append(AIMessage(content=content))
+            else:
+                lc_messages.append(HumanMessage(content=content))
+
+        reply = self.llm.invoke(lc_messages).content
+
+        session.add_messages([self.assistant.message(reply)])
+
+        return reply

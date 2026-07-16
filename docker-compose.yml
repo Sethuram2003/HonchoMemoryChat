@@ -86,7 +86,7 @@ services:
       - HONCHO_URL=http://honcho-api:8000
       - HONCHO_WORKSPACE=honcho-memory-chat
       - OLLAMA_URL=http://host.docker.internal:11434
-      - OLLAMA_MODEL=ornith:9b
+      - OLLAMA_MODEL=llama3.1:8b
       - DB_PATH=/data/users.db
     depends_on:
       honcho-api:
