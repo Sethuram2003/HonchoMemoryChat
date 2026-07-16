@@ -2,8 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 
-from ..schemas.chat import SessionRequest
-from ..core.auth import get_current_user
+from app.schemas.chat import SessionRequest
+from app.core.auth import get_current_user
 
 router = APIRouter()
 

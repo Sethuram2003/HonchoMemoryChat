@@ -2,7 +2,7 @@ import sqlite3
 import hashlib
 import secrets
 
-from ..core.config import DB_PATH
+from app.core.config import DB_PATH
 
 
 def _hash_password(password, salt):

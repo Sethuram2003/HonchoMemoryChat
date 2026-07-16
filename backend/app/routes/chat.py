@@ -3,8 +3,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 
-from ..schemas.chat import ChatRequest
-from ..core.auth import get_current_user
+from app.schemas.chat import ChatRequest
+from app.core.auth import get_current_user
 
 SESSION_ID_RE = re.compile(r"^session-[a-f0-9]{8}$")
 

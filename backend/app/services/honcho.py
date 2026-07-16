@@ -3,7 +3,7 @@ from honcho import Honcho
 from langchain_ollama import ChatOllama
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
-from ..core.config import HONCHO_URL, WORKSPACE_ID, OLLAMA_URL, OLLAMA_MODEL
+from app.core.config import HONCHO_URL, WORKSPACE_ID, OLLAMA_URL, OLLAMA_MODEL
 
 
 def email_to_peer_id(email):

@@ -1,8 +1,8 @@
 from fastapi import APIRouter, HTTPException, Request
 
-from ..schemas.auth import AuthRequest
-from ..core.auth import make_token
-from ..db.users import create_user, verify_user
+from app.schemas.auth import AuthRequest
+from app.core.auth import make_token
+from app.db.users import create_user, verify_user
 
 router = APIRouter()
 
