@@ -1,33 +1,36 @@
 import React, { useState, useEffect, useRef } from "react";
 
-const API = "/api";
-
 export default function App() {
   const [user, setUser] = useState(null);
-  const [view, setView] = useState("landing");
+  const [token, setToken] = useState(null);
 
   const logout = () => {
     setUser(null);
-    setView("landing");
+    setToken(null);
   };
 
   if (!user) {
     return (
-      <Auth onLogin={(email) => { setUser(email); setView("chat"); }} />
+      <Auth onLogin={(email, tok) => { setUser(email); setToken(tok); }} />
     );
   }
-  return <Chat email={user} onLogout={logout} />;
+  return <Chat email={user} token={token} onLogout={logout} />;
 }
 
 function Auth({ onLogin }) {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
+    if (mode === "register" && password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
     const endpoint = mode === "login" ? "/api/login" : "/api/register";
     const resp = await fetch(endpoint, {
       method: "POST",
@@ -39,7 +42,12 @@ function Auth({ onLogin }) {
       setError(data.detail || "Something went wrong");
       return;
     }
-    onLogin(email);
+    const data = await resp.json();
+    if (data.token) {
+      onLogin(email, data.token);
+    } else {
+      setError("Login did not return a token");
+    }
   };
 
   return (
@@ -49,11 +57,11 @@ function Auth({ onLogin }) {
         <div style={styles.tabs}>
           <button
             style={mode === "login" ? styles.tabActive : styles.tab}
-            onClick={() => setMode("login")}
+            onClick={() => { setMode("login"); setError(""); }}
           >Login</button>
           <button
             style={mode === "register" ? styles.tabActive : styles.tab}
-            onClick={() => setMode("register")}
+            onClick={() => { setMode("register"); setError(""); }}
           >New User</button>
         </div>
         <form onSubmit={submit} style={styles.form}>
@@ -73,6 +81,16 @@ function Auth({ onLogin }) {
             style={styles.input}
             required
           />
+          {mode === "register" && (
+            <input
+              type="password"
+              placeholder="Confirm Password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              style={styles.input}
+              required
+            />
+          )}
           <button type="submit" style={styles.button}>
             {mode === "login" ? "Login" : "Create Account"}
           </button>
@@ -83,13 +101,15 @@ function Auth({ onLogin }) {
   );
 }
 
-function Chat({ email, onLogout }) {
+function Chat({ email, token, onLogout }) {
   const [sessions, setSessions] = useState([]);
   const [activeSession, setActiveSession] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const msgEnd = useRef(null);
+
+  const authHeader = { Authorization: `Bearer ${token}` };
 
   useEffect(() => {
     loadSessions();
@@ -104,15 +124,18 @@ function Chat({ email, onLogout }) {
   }, [messages]);
 
   const loadSessions = async () => {
-    const resp = await fetch(`/api/sessions?email=${encodeURIComponent(email)}`);
+    const resp = await fetch("/api/sessions", { headers: authHeader });
+    if (resp.status === 401) { onLogout(); return; }
     const data = await resp.json();
     setSessions(data.sessions || []);
   };
 
   const loadMessages = async () => {
     const resp = await fetch(
-      `/api/messages?email=${encodeURIComponent(email)}&session_id=${activeSession}`
+      `/api/messages?session_id=${activeSession}`,
+      { headers: authHeader },
     );
+    if (resp.status === 401) { onLogout(); return; }
     const data = await resp.json();
     setMessages(data.messages || []);
   };
@@ -120,9 +143,10 @@ function Chat({ email, onLogout }) {
   const newSession = async () => {
     const resp = await fetch("/api/sessions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeader },
       body: JSON.stringify({ email }),
     });
+    if (resp.status === 401) { onLogout(); return; }
     const data = await resp.json();
     setSessions([data.session_id, ...sessions]);
     setActiveSession(data.session_id);
@@ -137,9 +161,10 @@ function Chat({ email, onLogout }) {
     setLoading(true);
     const resp = await fetch("/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, session_id: activeSession, message: text }),
+      headers: { "Content-Type": "application/json", ...authHeader },
+      body: JSON.stringify({ session_id: activeSession, message: text }),
     });
+    if (resp.status === 401) { onLogout(); return; }
     const data = await resp.json();
     setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
     setLoading(false);
@@ -207,19 +232,12 @@ function Chat({ email, onLogout }) {
 
 const styles = {
   authWrap: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    height: "100vh",
-    background: "#1a1a2e",
+    display: "flex", justifyContent: "center", alignItems: "center",
+    height: "100vh", background: "#1a1a2e",
   },
   authBox: {
-    background: "#16213e",
-    padding: "40px",
-    borderRadius: "12px",
-    width: "360px",
-    textAlign: "center",
-    color: "#fff",
+    background: "#16213e", padding: "40px", borderRadius: "12px",
+    width: "360px", textAlign: "center", color: "#fff",
   },
   tabs: { display: "flex", gap: "8px", marginBottom: "20px" },
   tab: {
@@ -273,19 +291,13 @@ const styles = {
     color: "#888",
   },
   msgArea: { flex: 1, overflow: "auto", padding: "20px" },
-  msgUser: {
-    display: "flex", justifyContent: "flex-end", marginBottom: "12px",
-  },
-  msgAssistant: {
-    display: "flex", justifyContent: "flex-start", marginBottom: "12px",
-  },
+  msgUser: { display: "flex", justifyContent: "flex-end", marginBottom: "12px" },
+  msgAssistant: { display: "flex", justifyContent: "flex-start", marginBottom: "12px" },
   msgBubble: {
     maxWidth: "70%", padding: "10px 14px", borderRadius: "12px",
     background: "#0f3460", fontSize: "14px", lineHeight: "1.4",
   },
-  inputArea: {
-    display: "flex", padding: "16px", borderTop: "1px solid #333",
-  },
+  inputArea: { display: "flex", padding: "16px", borderTop: "1px solid #333" },
   chatInput: {
     flex: 1, padding: "12px", borderRadius: "6px", border: "1px solid #333",
     background: "#0d1b2a", color: "#fff", fontSize: "14px",
